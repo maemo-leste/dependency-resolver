@@ -1,0 +1,7 @@
+This repo performs simplistic parsing of debian/control files to figures out
+what order to build packages in to ensure all dependencies are resolved.
+
+Any external dependencies not mentioned in the set of control files are
+*removed* which alleviates the need to also parse the Packages file of the
+various distro repositories.
+
