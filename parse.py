@@ -21,7 +21,11 @@ subsect_start = re.compile(r'^([A-Za-z\-]+):')
 
 
 def strip_version(s):
-    return s.split('(')[0].strip()
+    s = s.split('(')[0].strip()
+    s = s.split('[')[0].strip()
+    s = s.split('<')[0].strip()
+    s = s.split(':')[0].strip()
+    return s
 
 
 def parse_field(name, field):
