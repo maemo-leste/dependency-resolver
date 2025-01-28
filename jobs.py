@@ -4,6 +4,7 @@
 injected_deps = ['mce-dev',
                  'libgles2-mesa-dev', # FIXME
                  'python3-gps', # pkg-gps weirdness
+                 'xvfb',
                  ]
 
 
