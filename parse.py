@@ -79,7 +79,7 @@ def parse_section(section):
     return line_subsect
 
 
-def parse_pkg(fn):
+def parse_pkg(fn, honour_src=True):
     #print('Parsing:', fn)
     with open(fn) as fp:
         contents = fp.read()
@@ -93,7 +93,7 @@ def parse_pkg(fn):
         parsed_section.pop('Description', None)
 
         keys = dict([(key, parse_field(key, value)) for (key, value) in parsed_section.items()])
-        if parsed_section.get('Source'):
+        if parsed_section.get('Source') and honour_src:
             package_source = keys
         elif parsed_section.get('Package'):
             package_pkgs += [keys]
@@ -101,17 +101,22 @@ def parse_pkg(fn):
     return package_source, package_pkgs
 
 
-def parse_packages(control_files):
+def parse_packages(control_files, parse_packages_file=False):
     # What does a parsed package look like?
     # * (source) package name
     # * build depends
     # * packages provided once built
 
     parsed_packages = []
-    in_pkgs = [parse_pkg(x) for x in control_files]
+    in_pkgs = [parse_pkg(x, honour_src=not parse_packages_file) for x in control_files]
     for (src_pkg, pkg_pkg) in in_pkgs:
-        pkg_name = src_pkg['Source']
-        pkg_build_dep = src_pkg.get('Build-Depends', [])
+        if not parse_packages_file:
+            pkg_name = src_pkg['Source']
+            pkg_build_dep = src_pkg.get('Build-Depends', [])
+        else:
+            pkg_name = 'nan'
+            pkg_build_dep = []
+
         pkg_provides = []
 
         for pp in pkg_pkg:
@@ -132,6 +137,7 @@ def flat(l):
 
 
 def remove_pkg_nonexistent(parsed_packages, world_provided):
+    removed_pkgs = set()
     for pkg in parsed_packages:
         new_build_dep = []
         for build_dep in pkg['build_dep']:
@@ -140,17 +146,23 @@ def remove_pkg_nonexistent(parsed_packages, world_provided):
                 for bdp in build_dep:
                     if bdp in world_provided:
                         new_bdp += [bdp]
+                    else:
+                        removed_pkgs.add(bdp)
                 if len(new_bdp):
                     new_build_dep += new_bdp
             else:
                 if build_dep in world_provided:
                     new_build_dep += [build_dep]
+                else:
+                    removed_pkgs.add(build_dep)
 
         #print('OLD:', pkg['build_dep'], 'NEW:', new_build_dep)
         pkg['build_dep'] = new_build_dep
 
+    return removed_pkgs
 
-def package_build_order(parsed_packages, world_provided, inject_deps):
+
+def package_build_order(parsed_packages, inject_deps):
     max_tries = len(parsed_packages)
 
     print('Total:', len(parsed_packages))
@@ -172,7 +184,8 @@ def package_build_order(parsed_packages, world_provided, inject_deps):
                 else:
                     satisfied = dep in cur_provided
 
-                #print(satisfied)
+                if not satisfied:
+                    break
 
             #print(pkg['name'], 'satisfied:', satisfied)
 
@@ -185,7 +198,7 @@ def package_build_order(parsed_packages, world_provided, inject_deps):
             pkg_order.append(pkg['name'][0])
             parsed_packages.remove(pkg)
 
-    if tries >= 99 or len(parsed_packages):
+    if len(parsed_packages):
         print(len(parsed_packages))
         #print('Remaining:', [pkg['name'] for pkg in parsed_packages])
         raise Exception('Failed to resolve')
@@ -196,16 +209,21 @@ def package_build_order(parsed_packages, world_provided, inject_deps):
 
 if __name__ == '__main__':
     from jobs import jobs, injected_deps
+    debian_control_files = sys.argv[1:]
     control_files = ['../%s/debian/control' % name for name in jobs]
     #control_files = glob(sys.argv[1])
-    #control_files = sys.argv[1:]
+
+    deb_parsed_packages = parse_packages(debian_control_files,
+                                         parse_packages_file=True)
+    deb_world_provided = flat(pp['provides'] for pp in deb_parsed_packages)
+
     parsed_packages = parse_packages(control_files)
-    #print(parsed_packages)
 
     world_provided = flat(pp['provides'] for pp in parsed_packages)
-    remove_pkg_nonexistent(parsed_packages, world_provided)
-    #print('world_provided:', world_provided)
+
+    removed = remove_pkg_nonexistent(parsed_packages, world_provided + deb_world_provided)
+    #print('removed:', removed)
 
     #print(parsed_packages)
-    pkg_order = package_build_order(parsed_packages, world_provided, injected_deps)
+    pkg_order = package_build_order(parsed_packages, injected_deps + deb_world_provided)
     print('Order:', pkg_order)
