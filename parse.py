@@ -98,7 +98,7 @@ def parse_pkg(fn, honour_src=True):
         elif parsed_section.get('Package'):
             package_pkgs += [keys]
 
-    return package_source, package_pkgs
+    return fn, package_source, package_pkgs
 
 
 def parse_packages(control_files, parse_packages_file=False):
@@ -109,7 +109,7 @@ def parse_packages(control_files, parse_packages_file=False):
 
     parsed_packages = []
     in_pkgs = [parse_pkg(x, honour_src=not parse_packages_file) for x in control_files]
-    for (src_pkg, pkg_pkg) in in_pkgs:
+    for (control_file, src_pkg, pkg_pkg) in in_pkgs:
         if not parse_packages_file:
             pkg_name = src_pkg['Source']
             pkg_build_dep = src_pkg.get('Build-Depends', [])
@@ -127,7 +127,7 @@ def parse_packages(control_files, parse_packages_file=False):
         pkg_provides = flat(pkg_provides)
 
         parsed_packages.append({'name': pkg_name[0], 'build_dep': pkg_build_dep,
-                                'provides': pkg_provides})
+                                'provides': pkg_provides, 'control_file': control_file})
 
     return parsed_packages
 
@@ -221,9 +221,16 @@ if __name__ == '__main__':
 
     world_provided = flat(pp['provides'] for pp in parsed_packages)
 
-    removed = remove_pkg_nonexistent(parsed_packages, world_provided + deb_world_provided)
-    #print('removed:', removed)
+    removed = remove_pkg_nonexistent(parsed_packages, world_provided  + deb_world_provided)
+    print('removed:', removed)
+
+    pkgname2control = {}
+    for pkg in parsed_packages:
+        for name in pkg['name']:
+            pkgname2control[name] = pkg['control_file'].replace('../', '').replace('/debian/control', '')
 
     #print(parsed_packages)
     pkg_order = package_build_order(parsed_packages, injected_deps + deb_world_provided)
     print('Order:', pkg_order)
+    for pkg in pkg_order:
+        print('- [ ] %s' % pkgname2control[pkg])
